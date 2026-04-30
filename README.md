@@ -4,7 +4,7 @@ colorFrom: blue
 colorTo: indigo
 sdk: docker
 pinned: false
-short_description: AI customer support chat for Meridian Electronics (FastAPI, OpenRouter, remote MCP, streaming UI).
+short_description: AI support for Meridian - FastAPI, OpenRouter, MCP.
 ---
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
