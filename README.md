@@ -7,10 +7,6 @@ pinned: false
 short_description: AI support for Meridian - FastAPI, OpenRouter, MCP.
 ---
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
-
-This Space runs from the repo **Dockerfile** (`sdk: docker`). Fields like `app_file` / `sdk_version` apply to **Gradio** or **static** Spaces, not this layout.
-
 # Meridian Support Chat
 
 **Production**
