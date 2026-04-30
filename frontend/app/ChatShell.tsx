@@ -53,11 +53,13 @@ export function ChatShell({ sessionId, threadId, getAuthHeaders, showUserButton 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const getAuthHeadersRef = useRef(getAuthHeaders);
+  getAuthHeadersRef.current = getAuthHeaders;
 
   useEffect(() => {
     if (!sessionId) return;
     void (async () => {
-      const auth = await getAuthHeaders();
+      const auth = await getAuthHeadersRef.current();
       const q =
         threadId != null && threadId !== ""
           ? `?thread_id=${encodeURIComponent(threadId)}`
@@ -75,7 +77,7 @@ export function ChatShell({ sessionId, threadId, getAuthHeaders, showUserButton 
       }));
       setMessages(mapped);
     })();
-  }, [sessionId, threadId, getAuthHeaders]);
+  }, [sessionId, threadId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,7 +92,7 @@ export function ChatShell({ sessionId, threadId, getAuthHeaders, showUserButton 
     setMessages((prev) => [...prev, userMsg, { id: asstId, role: "assistant", content: "" }]);
     setLoading(true);
 
-    const auth = await getAuthHeaders();
+    const auth = await getAuthHeadersRef.current();
     const payload =
       threadId != null && threadId !== ""
         ? { message: text, session_id: sessionId, thread_id: threadId }

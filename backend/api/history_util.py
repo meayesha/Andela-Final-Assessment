@@ -10,6 +10,13 @@ def _content_to_text(content: Any) -> str:
         return ""
     if isinstance(content, str):
         return content
+    if isinstance(content, dict):
+        btype = str(content.get("type", ""))
+        if btype in ("input_text", "output_text", "text") and "text" in content:
+            return str(content.get("text", ""))
+        if isinstance(content.get("text"), str):
+            return str(content["text"])
+        return ""
     if isinstance(content, list):
         parts: list[str] = []
         for block in content:
