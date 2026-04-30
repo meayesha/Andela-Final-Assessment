@@ -1,0 +1,10 @@
+# Kept for Docker / pip installs. Primary local env: backend/pyproject.toml + `uv sync`.
+mcp>=1.2.0
+openai-agents>=0.14.0
+openai>=1.59.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+aiosqlite>=0.20.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+PyJWT[crypto]>=2.8.0

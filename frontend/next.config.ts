@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   ...(staticExport ? { output: "export" as const } : {}),
   trailingSlash: true,
   images: { unoptimized: true },
+  async rewrites() {
+    return [{ source: "/favicon.ico", destination: "/favicon.svg" }];
+  },
 };
 
 export default nextConfig;
