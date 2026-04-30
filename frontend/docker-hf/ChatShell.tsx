@@ -102,11 +102,11 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
     });
 
     if (!res.ok || !res.body) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === asstId ? { ...m, content: `Request failed (${res.status}).` } : m,
-        ),
-      );
+      const hint =
+        res.status === 404
+          ? "Chat is temporarily unavailable. Please try again in a moment."
+          : `Something went wrong (${res.status}). Please try again.`;
+      setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: hint } : m)));
       setLoading(false);
       return;
     }
@@ -148,9 +148,6 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
       >
         <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>Meridian Electronics</h1>
         <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Customer support</h2>
-        <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)", maxWidth: 560 }}>
-          Product search, orders, and account help.
-        </p>
       </header>
 
       <div
@@ -163,9 +160,6 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
           gap: 12,
         }}
       >
-        {messages.length === 0 ? (
-          <p style={{ color: "var(--muted)" }}>Ask about products, orders, or verification.</p>
-        ) : null}
         {messages.map((m) => (
           <div
             key={m.id}

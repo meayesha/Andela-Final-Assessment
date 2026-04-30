@@ -53,7 +53,11 @@ export async function proxyToUpstream(req: NextRequest): Promise<Response> {
 
   const res = await fetch(target, init);
   const headers = new Headers(res.headers);
+  // Node's fetch often decompresses gzip/br transparently but may leave encoding headers;
+  // forwarding them causes browsers to fail with ERR_CONTENT_DECODING_FAILED.
   headers.delete("transfer-encoding");
+  headers.delete("content-encoding");
+  headers.delete("content-length");
   return new NextResponse(res.body, {
     status: res.status,
     statusText: res.statusText,

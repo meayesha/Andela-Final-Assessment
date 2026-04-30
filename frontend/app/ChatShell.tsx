@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
-import {
-  clientApiRequestUrl,
-  getPublicApiBase,
-  publicApiBaseIsInvalidHubUrl,
-} from "../lib/api-request-url";
+import { clientApiRequestUrl } from "../lib/api-request-url";
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
 
@@ -66,45 +62,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [vercelApiIssue, setVercelApiIssue] = useState<
-    "missing" | "self" | "proxy503" | "hfGitUrl" | null
-  >(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (publicApiBaseIsInvalidHubUrl()) {
-      setVercelApiIssue("hfGitUrl");
-      return;
-    }
-    const host = window.location.hostname;
-    if (!host.endsWith("vercel.app")) {
-      setVercelApiIssue(null);
-      return;
-    }
-    const b = getPublicApiBase();
-    if (b === window.location.origin) {
-      setVercelApiIssue("self");
-      return;
-    }
-    if (b) {
-      setVercelApiIssue(null);
-      return;
-    }
-    void fetch(clientApiRequestUrl("/api/health"), { method: "GET" })
-      .then(async (r) => {
-        if (r.ok) {
-          setVercelApiIssue(null);
-          return;
-        }
-        if (r.status === 503) {
-          setVercelApiIssue("proxy503");
-          return;
-        }
-        setVercelApiIssue("missing");
-      })
-      .catch(() => setVercelApiIssue("missing"));
-  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -148,8 +106,8 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
     if (!res.ok || !res.body) {
       const hint =
         res.status === 404
-          ? "404: /api/chat/stream is not running on this host. On Vercel use Root Directory = frontend, leave Output Directory empty, remove STATIC_EXPORT from env, set API_PROXY_ORIGIN (or NEXT_PUBLIC_API_URL), redeploy."
-          : `Request failed (${res.status}).`;
+          ? "Chat is temporarily unavailable. Please try again in a moment."
+          : `Something went wrong (${res.status}). Please try again.`;
       setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: hint } : m)));
       setLoading(false);
       return;
@@ -174,48 +132,15 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   }
 
   return (
-    <>
-      {vercelApiIssue === "hfGitUrl" ? (
-        <div
-          role="alert"
-          style={{
-            padding: "12px 16px",
-            background: "var(--surface-hover)",
-            borderBottom: "1px solid var(--border)",
-            color: "var(--text)",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        >
-          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> must not be{" "}
-          <code style={{ fontSize: 13 }}>huggingface.co/spaces/…</code> — use your Space{" "}
-          <code style={{ fontSize: 13 }}>*.hf.space</code> URL or <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code>.
-        </div>
-      ) : null}
-      {vercelApiIssue === "proxy503" ? (
-        <div role="status" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
-          Set <code>API_PROXY_ORIGIN</code> or <code>NEXT_PUBLIC_API_URL</code> on Vercel (Production + Preview), then redeploy.
-        </div>
-      ) : null}
-      {vercelApiIssue === "missing" ? (
-        <div role="status" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
-          Chat needs the FastAPI backend. Set <code>NEXT_PUBLIC_API_URL</code> or server-only <code>API_PROXY_ORIGIN</code>, then redeploy.
-        </div>
-      ) : null}
-      {vercelApiIssue === "self" ? (
-        <div role="status" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
-          <code>NEXT_PUBLIC_API_URL</code> must be your API origin (e.g. <code>https://…hf.space</code>), not this Vercel URL.
-        </div>
-      ) : null}
-      <div
-        style={{
-          minHeight: "100vh",
-          maxWidth: 920,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+    <div
+      style={{
+        minHeight: "100vh",
+        maxWidth: 920,
+        margin: "0 auto",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
         <header
           style={{
             padding: "16px 20px",
@@ -230,9 +155,6 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
           <div>
             <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>Meridian Electronics</h1>
             <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Customer support</h2>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)", maxWidth: 560 }}>
-              Hi there! I am Meridian&apos;s customer support assistant. How can I help you today?
-            </p>
           </div>
           {showUserButton ? (
             <div style={{ flexShrink: 0 }}>
@@ -251,11 +173,6 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
             gap: 12,
           }}
         >
-          {messages.length === 0 ? (
-            <p style={{ color: "var(--muted)" }}>
-              Examples: product search, order status, or account verification.
-            </p>
-          ) : null}
           {messages.map((m) => (
             <div
               key={m.id}
@@ -325,6 +242,5 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
           </button>
         </div>
       </div>
-    </>
   );
 }
