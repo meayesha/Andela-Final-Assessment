@@ -3,8 +3,8 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Todo MCP Chat",
-  description: "Manage todos through natural language",
+  title: "Meridian Support",
+  description: "Meridian Electronics customer support — products, orders, and account help",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
   },

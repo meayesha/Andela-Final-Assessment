@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Todo MCP Chat FastAPI backend and Next.js dev servers together."""
+"""Run Meridian Support FastAPI backend and Next.js dev servers together."""
 
 from __future__ import annotations
 
@@ -121,18 +121,20 @@ def main() -> int:
     )
 
     display_host = "localhost" if host in ("0.0.0.0", "::", "[::]") else host
-    print("Todo MCP Chat local dev started:", flush=True)
+    print("Meridian Support local dev started:", flush=True)
     print(f"- Backend:  http://{display_host}:{port}", flush=True)
     print("- Frontend: http://localhost:3000  (see package.json dev script for port)", flush=True)
 
-    todo_db = (backend_env.get("TODO_DB_PATH") or "").strip()
+    agent_db = (backend_env.get("AGENT_DB_PATH") or "").strip()
     data_dir = (backend_env.get("DATA_DIR") or "").strip()
-    if todo_db:
-        print(f"- SQLite:   todos DB → {todo_db}", flush=True)
+    if agent_db:
+        print(f"- SQLite:   agent sessions → {agent_db}", flush=True)
     elif data_dir:
-        print(f"- SQLite:   DATA_DIR={data_dir} (todos under that folder by default)", flush=True)
+        print(f"- SQLite:   DATA_DIR={data_dir}", flush=True)
     else:
-        print("- SQLite:   default files under backend/data/ (set TODO_DB_PATH / DATA_DIR in .env to override)", flush=True)
+        print("- SQLite:   default agent_sessions.sqlite under backend/data/", flush=True)
+    mcp_url = (backend_env.get("MCP_SERVER_URL") or "").strip()
+    print(f"- MCP:      {mcp_url or '(default assessment URL)'}", flush=True)
 
     if (backend_env.get("CLERK_JWKS_URL") or "").strip():
         print("- Auth:     Clerk JWT verification enabled (CLERK_JWKS_URL set)", flush=True)

@@ -23,7 +23,7 @@ def build_openrouter_run_config() -> RunConfig:
 
     headers: dict[str, str] = {}
     referer = (os.environ.get("OPENROUTER_HTTP_REFERER") or "").strip()
-    title = (os.environ.get("OPENROUTER_APP_TITLE") or "Todo MCP Chat").strip()
+    title = (os.environ.get("OPENROUTER_APP_TITLE") or "Meridian Support Chat").strip()
     if referer:
         headers["HTTP-Referer"] = referer
     if title:

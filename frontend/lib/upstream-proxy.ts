@@ -2,7 +2,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 export function upstreamOrigin(): string {
-  const raw = (process.env.API_PROXY_ORIGIN || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  let raw = (process.env.API_PROXY_ORIGIN || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (!raw && process.env.NODE_ENV !== "production") {
+    raw = (process.env.LOCAL_API_ORIGIN || "http://127.0.0.1:8000").trim();
+  }
   return raw.replace(/\/$/, "");
 }
 
@@ -15,7 +18,7 @@ export function forwardRequestHeaders(req: NextRequest): Headers {
   return out;
 }
 
-/** FastAPI routes have no trailing slash; Next may request `/api/todos/`. */
+/** FastAPI routes have no trailing slash; Next may request `/api/.../`. */
 function normalizedApiPath(pathname: string): string {
   if (pathname.length <= 1 || !pathname.startsWith("/api")) return pathname;
   let p = pathname;
@@ -29,7 +32,7 @@ export async function proxyToUpstream(req: NextRequest): Promise<Response> {
     return NextResponse.json(
       {
         detail:
-          "Set API_PROXY_ORIGIN or NEXT_PUBLIC_API_URL in Vercel → Environment Variables (include Preview), then redeploy.",
+          "Missing upstream API URL: set API_PROXY_ORIGIN or NEXT_PUBLIC_API_URL (e.g. http://127.0.0.1:8000 for local FastAPI). On Vercel, set them under Environment Variables and redeploy.",
       },
       { status: 503 },
     );

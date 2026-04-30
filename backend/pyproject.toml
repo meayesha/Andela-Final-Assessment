@@ -1,7 +1,7 @@
 [project]
-name = "todo-mcp-api"
+name = "meridian-support-api"
 version = "0.1.0"
-description = "FastAPI API, OpenRouter agent, and MCP todo integration"
+description = "Meridian Electronics support chat: FastAPI, OpenRouter agent, remote MCP (Streamable HTTP)"
 requires-python = ">=3.12"
 dependencies = [
   "mcp>=1.2.0",
@@ -13,6 +13,16 @@ dependencies = [
   "pydantic>=2.0.0",
   "python-dotenv>=1.0.0",
   "pyjwt[crypto]>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+  "integration: calls the remote Meridian MCP (enable with RUN_MCP_INTEGRATION=1)",
 ]
 
 [tool.uv]

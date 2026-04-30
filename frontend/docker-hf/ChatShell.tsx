@@ -1,18 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { clientApiRequestUrl } from "../lib/api-request-url";
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
 
-type Todo = {
-  id: number;
-  title: string;
-  description: string;
-  completed: boolean;
-  created_at: string;
-};
-
-const SESSION_KEY = "todo_mcp_session_id";
+const SESSION_KEY = "meridian_support_session_id";
 
 export function getOrCreateAnonymousSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -22,10 +15,6 @@ export function getOrCreateAnonymousSessionId(): string {
     sessionStorage.setItem(SESSION_KEY, id);
   }
   return id;
-}
-
-function apiBase(): string {
-  return (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 }
 
 async function parseSSEStream(
@@ -69,28 +58,18 @@ export type ChatShellProps = {
 
 export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const fetchTodos = useCallback(async () => {
-    const base = apiBase();
-    const auth = await getAuthHeaders();
-    const res = await fetch(`${base}/api/todos`, { headers: { ...auth } });
-    if (!res.ok) return;
-    setTodos(await res.json());
-  }, [getAuthHeaders]);
-
   useEffect(() => {
     if (!sessionId) return;
-    void fetchTodos();
-    const base = apiBase();
     void (async () => {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${base}/api/session/${encodeURIComponent(sessionId)}/history`, {
-        headers: { ...auth },
-      });
+      const res = await fetch(
+        clientApiRequestUrl(`/api/session/${encodeURIComponent(sessionId)}/history`),
+        { headers: { ...auth } },
+      );
       if (!res.ok) return;
       const data = (await res.json()) as { messages: { role: string; content: string }[] };
       const mapped: ChatMessage[] = (data.messages || []).map((m, i) => ({
@@ -100,7 +79,7 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
       }));
       setMessages(mapped);
     })();
-  }, [sessionId, fetchTodos, getAuthHeaders]);
+  }, [sessionId, getAuthHeaders]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -115,9 +94,8 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
     setMessages((prev) => [...prev, userMsg, { id: asstId, role: "assistant", content: "" }]);
     setLoading(true);
 
-    const base = apiBase();
     const auth = await getAuthHeaders();
-    const res = await fetch(`${base}/api/chat/stream`, {
+    const res = await fetch(clientApiRequestUrl("/api/chat/stream"), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify({ message: text, session_id: sessionId }),
@@ -141,198 +119,121 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
           prev.map((m) => (m.id === asstId ? { ...m, content: m.content + token } : m)),
         );
       },
-      () => {
-        setLoading(false);
-        void fetchTodos();
-      },
+      () => setLoading(false),
       (msg) => {
         setMessages((prev) =>
           prev.map((m) => (m.id === asstId ? { ...m, content: `Error: ${msg}` } : m)),
         );
         setLoading(false);
-        void fetchTodos();
       },
     );
   }
 
   return (
     <div
-      className="app-grid"
       style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(260px, 320px) 1fr",
         minHeight: "100vh",
-        maxWidth: 1200,
+        maxWidth: 920,
         margin: "0 auto",
-        gap: 0,
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      <aside
+      <header
         style={{
-          borderRight: "1px solid var(--border)",
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--border)",
           background: "var(--surface)",
-          display: "flex",
-          flexDirection: "column",
-          padding: 16,
         }}
       >
-        <h1 style={{ fontSize: "1.1rem", margin: "0 0 4px", fontWeight: 600 }}>Your todos</h1>
-        <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--muted)" }}>
-          Synced from the MCP server (SQLite).
+        <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>Meridian Electronics</h1>
+        <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Customer support</h2>
+        <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)", maxWidth: 560 }}>
+          Product search, orders, and account help via Meridian&apos;s order tools.
         </p>
-        <button
-          type="button"
-          onClick={() => void fetchTodos()}
-          style={{
-            marginBottom: 12,
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--surface-hover)",
-            color: "var(--text)",
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          Refresh list
-        </button>
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, overflowY: "auto", flex: 1 }}>
-          {todos.length === 0 ? (
-            <li style={{ color: "var(--muted)", fontSize: 14 }}>No todos yet. Ask the assistant.</li>
-          ) : (
-            todos.map((t) => (
-              <li
-                key={t.id}
-                style={{
-                  padding: "10px 12px",
-                  marginBottom: 8,
-                  borderRadius: "var(--radius)",
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  fontSize: 14,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: t.completed ? "var(--success)" : "var(--muted)",
-                    }}
-                  >
-                    {t.completed ? "Done" : "Open"}
-                  </span>
-                  <span style={{ color: "var(--muted)", fontSize: 11 }}>#{t.id}</span>
-                </div>
-                <div style={{ fontWeight: 500 }}>{t.title}</div>
-                {t.description ? (
-                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{t.description}</div>
-                ) : null}
-              </li>
-            ))
-          )}
-        </ul>
-      </aside>
+      </header>
 
-      <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-        <header
-          style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--surface)",
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Todo assistant</h2>
-          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--muted)" }}>
-            Natural language is routed through an agent that calls MCP todo tools.
-          </p>
-        </header>
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: 20,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          {messages.length === 0 ? (
-            <p style={{ color: "var(--muted)" }}>
-              Try: &quot;Add a todo to buy groceries&quot;, &quot;List my incomplete tasks&quot;, or
-              &quot;Mark todo 1 as complete&quot;.
-            </p>
-          ) : null}
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              style={{
-                alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                maxWidth: "min(92%, 640px)",
-                padding: "12px 16px",
-                borderRadius: "var(--radius)",
-                background: m.role === "user" ? "var(--user-bg)" : "var(--assistant-bg)",
-                border: "1px solid var(--border)",
-                whiteSpace: "pre-wrap",
-                fontSize: 15,
-                lineHeight: 1.5,
-              }}
-            >
-              {m.content || (loading && m.role === "assistant" ? "…" : "")}
-            </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
-
-        <div
-          style={{
-            padding: 16,
-            borderTop: "1px solid var(--border)",
-            background: "var(--surface)",
-            display: "flex",
-            gap: 10,
-          }}
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void sendMessage();
-              }
-            }}
-            placeholder="Message the assistant…"
-            disabled={loading}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        {messages.length === 0 ? (
+          <p style={{ color: "var(--muted)" }}>Ask about products, orders, or verification.</p>
+        ) : null}
+        {messages.map((m) => (
+          <div
+            key={m.id}
             style={{
-              flex: 1,
-              padding: "12px 14px",
-              borderRadius: 10,
+              alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+              maxWidth: "min(92%, 640px)",
+              padding: "12px 16px",
+              borderRadius: "var(--radius)",
+              background: m.role === "user" ? "var(--user-bg)" : "var(--assistant-bg)",
               border: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--text)",
+              whiteSpace: "pre-wrap",
               fontSize: 15,
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => void sendMessage()}
-            disabled={loading || !input.trim()}
-            style={{
-              padding: "12px 20px",
-              borderRadius: 10,
-              border: "none",
-              background: loading ? "var(--border)" : "var(--accent-dim)",
-              color: "#fff",
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
+              lineHeight: 1.5,
             }}
           >
-            Send
-          </button>
-        </div>
-      </main>
+            {m.content || (loading && m.role === "assistant" ? "…" : "")}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      <div
+        style={{
+          padding: 16,
+          borderTop: "1px solid var(--border)",
+          background: "var(--surface)",
+          display: "flex",
+          gap: 10,
+        }}
+      >
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void sendMessage();
+            }
+          }}
+          placeholder="Describe what you need help with…"
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: "12px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "var(--bg)",
+            color: "var(--text)",
+            fontSize: 15,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => void sendMessage()}
+          disabled={loading || !input.trim()}
+          style={{
+            padding: "12px 20px",
+            borderRadius: 10,
+            border: "none",
+            background: loading ? "var(--border)" : "var(--accent-dim)",
+            color: "#fff",
+            fontWeight: 600,
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          Send
+        </button>
+      </div>
     </div>
   );
 }

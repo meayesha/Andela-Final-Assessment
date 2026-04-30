@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Todo MCP Chat",
-  description: "Manage todos through natural language",
+  title: "Meridian Support",
+  description: "Meridian Electronics customer support chat",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

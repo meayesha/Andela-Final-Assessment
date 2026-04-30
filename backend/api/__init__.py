@@ -1,1 +1,1 @@
-"""HTTP API: agent streaming, todos, session history."""
+"""HTTP API: Meridian support agent streaming, remote MCP, session history."""

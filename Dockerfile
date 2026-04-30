@@ -22,7 +22,7 @@ ENV CLERK_AUTH_OPTIONAL=1
 ENV PYTHONPATH=/app
 ENV DATA_DIR=/data
 RUN mkdir -p /data
-COPY backend/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ /app/
 COPY --from=frontend /app/frontend/out /app/static

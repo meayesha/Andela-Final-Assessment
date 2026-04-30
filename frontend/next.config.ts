@@ -11,7 +11,7 @@ const staticExport =
 
 const nextConfig: NextConfig = {
   ...(staticExport ? { output: "export" as const } : {}),
-  // false: trailing slashes on /api/* break App Router route handlers on Vercel (404 on /api/todos/).
+  // false: trailing slashes on /api/* break App Router route handlers on Vercel (404 on proxied routes).
   trailingSlash: false,
   images: { unoptimized: true },
   async rewrites() {

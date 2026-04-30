@@ -1,19 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
+import {
+  clientApiRequestUrl,
+  getPublicApiBase,
+  publicApiBaseIsInvalidHubUrl,
+} from "../lib/api-request-url";
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
 
-type Todo = {
-  id: number;
-  title: string;
-  description: string;
-  completed: boolean;
-  created_at: string;
-};
-
-const SESSION_KEY = "todo_mcp_session_id";
+const SESSION_KEY = "meridian_support_session_id";
 
 export function getOrCreateAnonymousSessionId(): string {
   if (typeof window === "undefined") return "";
@@ -23,32 +20,6 @@ export function getOrCreateAnonymousSessionId(): string {
     sessionStorage.setItem(SESSION_KEY, id);
   }
   return id;
-}
-
-function apiBase(): string {
-  return (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
-}
-
-/**
- * True when NEXT_PUBLIC_API_URL points at huggingface.co (Space card, git, etc.) — not the running API.
- * The live Space is always on *.hf.space (open the Space → use the URL in the browser address bar).
- */
-function apiBaseIsInvalidHuggingFaceHubUrl(): boolean {
-  const b = apiBase().toLowerCase();
-  if (!b) return false;
-  if (b.includes(".hf.space")) return false;
-  if (b.includes("huggingface.co")) return true;
-  if (b.includes(".git")) return true;
-  return false;
-}
-
-/** Same-origin API: absolute URL; never cross-origin to huggingface.co (CORS will fail). */
-function apiRequestUrl(path: string): string {
-  const p = (path || "").replace(/\/+$/, "") || path;
-  const b = apiBase();
-  if (b && !apiBaseIsInvalidHuggingFaceHubUrl()) return `${b}${p}`;
-  if (typeof window !== "undefined") return new URL(p, window.location.origin).toString();
-  return p;
 }
 
 async function parseSSEStream(
@@ -93,10 +64,8 @@ export type ChatShellProps = {
 
 export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShellProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  /** Vercel deploy: API lives elsewhere; warn if NEXT_PUBLIC_API_URL missing or wrongly set to this origin. */
   const [vercelApiIssue, setVercelApiIssue] = useState<
     "missing" | "self" | "proxy503" | "hfGitUrl" | null
   >(null);
@@ -104,7 +73,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (apiBaseIsInvalidHuggingFaceHubUrl()) {
+    if (publicApiBaseIsInvalidHubUrl()) {
       setVercelApiIssue("hfGitUrl");
       return;
     }
@@ -113,7 +82,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       setVercelApiIssue(null);
       return;
     }
-    const b = apiBase();
+    const b = getPublicApiBase();
     if (b === window.location.origin) {
       setVercelApiIssue("self");
       return;
@@ -122,8 +91,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       setVercelApiIssue(null);
       return;
     }
-    // No NEXT_PUBLIC_API_URL in bundle — same-origin /api may still work via server proxy + server env.
-    void fetch(apiRequestUrl("/api/health"), { method: "GET" })
+    void fetch(clientApiRequestUrl("/api/health"), { method: "GET" })
       .then(async (r) => {
         if (r.ok) {
           setVercelApiIssue(null);
@@ -138,23 +106,13 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       .catch(() => setVercelApiIssue("missing"));
   }, []);
 
-  const fetchTodos = useCallback(async () => {
-    const auth = await getAuthHeaders();
-    const res = await fetch(apiRequestUrl("/api/todos"), { headers: { ...auth } });
-    if (!res.ok) return;
-    setTodos(await res.json());
-  }, [getAuthHeaders]);
-
   useEffect(() => {
     if (!sessionId) return;
-    void fetchTodos();
     void (async () => {
       const auth = await getAuthHeaders();
       const res = await fetch(
-        apiRequestUrl(`/api/session/${encodeURIComponent(sessionId)}/history`),
-        {
-          headers: { ...auth },
-        },
+        clientApiRequestUrl(`/api/session/${encodeURIComponent(sessionId)}/history`),
+        { headers: { ...auth } },
       );
       if (!res.ok) return;
       const data = (await res.json()) as { messages: { role: string; content: string }[] };
@@ -165,7 +123,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       }));
       setMessages(mapped);
     })();
-  }, [sessionId, fetchTodos, getAuthHeaders]);
+  }, [sessionId, getAuthHeaders]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -181,7 +139,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
     setLoading(true);
 
     const auth = await getAuthHeaders();
-    const res = await fetch(apiRequestUrl("/api/chat/stream"), {
+    const res = await fetch(clientApiRequestUrl("/api/chat/stream"), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify({ message: text, session_id: sessionId }),
@@ -205,16 +163,12 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
           prev.map((m) => (m.id === asstId ? { ...m, content: m.content + token } : m)),
         );
       },
-      () => {
-        setLoading(false);
-        void fetchTodos();
-      },
+      () => setLoading(false),
       (msg) => {
         setMessages((prev) =>
           prev.map((m) => (m.id === asstId ? { ...m, content: `Error: ${msg}` } : m)),
         );
         setLoading(false);
-        void fetchTodos();
       },
     );
   }
@@ -234,149 +188,34 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
           }}
         >
           <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> must not be{" "}
-          <code style={{ fontSize: 13 }}>huggingface.co/spaces/…</code> — that is the website, not your API (browser CORS
-          will block it). Open the Space → copy the app URL that shows <code style={{ fontSize: 13 }}>*.hf.space</code> in
-          the address bar and set that in Vercel, or set <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> to that{" "}
-          <code style={{ fontSize: 13 }}>https://…hf.space</code> and <strong>remove</strong> the wrong{" "}
-          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> so this site proxies <code style={{ fontSize: 13 }}>/api/*</code>.
-          This build also ignores bad <code style={{ fontSize: 13 }}>huggingface.co</code> bases and uses same-origin{" "}
-          <code style={{ fontSize: 13 }}>/api/*</code> until you fix env + redeploy.
+          <code style={{ fontSize: 13 }}>huggingface.co/spaces/…</code> — use your Space{" "}
+          <code style={{ fontSize: 13 }}>*.hf.space</code> URL or <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code>.
         </div>
       ) : null}
       {vercelApiIssue === "proxy503" ? (
-        <div
-          role="status"
-          style={{
-            padding: "12px 16px",
-            background: "var(--surface-hover)",
-            borderBottom: "1px solid var(--border)",
-            color: "var(--text)",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        >
-          This deployment’s server has no upstream API URL. In Vercel → Environment Variables (scope to{" "}
-          <strong>Production and Preview</strong>), set <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> or{" "}
-          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> to your Hugging Face origin (e.g.{" "}
-          <code style={{ fontSize: 13 }}>https://…hf.space</code>), then <strong>Redeploy</strong>. The proxy runs on the
-          server, so Preview works without rebuilding the client bundle for <code style={{ fontSize: 13 }}>NEXT_PUBLIC_*</code>.
+        <div role="status" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
+          Set <code>API_PROXY_ORIGIN</code> or <code>NEXT_PUBLIC_API_URL</code> on Vercel (Production + Preview), then redeploy.
         </div>
       ) : null}
       {vercelApiIssue === "missing" ? (
-        <div
-          role="status"
-          style={{
-            padding: "12px 16px",
-            background: "var(--surface-hover)",
-            borderBottom: "1px solid var(--border)",
-            color: "var(--text)",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        >
-          Chat and todos need the FastAPI backend. In Vercel → Environment Variables, scope{" "}
-          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> to <strong>Production and Preview</strong>, then redeploy so the
-          client bundle includes your API origin. Or set server-only <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> (same URL) and
-          redeploy — same-origin <code style={{ fontSize: 13 }}>/api/*</code> is proxied without <code style={{ fontSize: 13 }}>NEXT_PUBLIC_*</code>.
+        <div role="status" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
+          Chat needs the FastAPI backend. Set <code>NEXT_PUBLIC_API_URL</code> or server-only <code>API_PROXY_ORIGIN</code>, then redeploy.
         </div>
       ) : null}
       {vercelApiIssue === "self" ? (
-        <div
-          role="status"
-          style={{
-            padding: "12px 16px",
-            background: "var(--surface-hover)",
-            borderBottom: "1px solid var(--border)",
-            color: "var(--text)",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        >
-          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> is set to this Vercel deployment. It must be the
-          origin where FastAPI runs (your Hugging Face Space <code style={{ fontSize: 13 }}>https://…hf.space</code>),
-          not <code style={{ fontSize: 13 }}>{typeof window !== "undefined" ? window.location.origin : ""}</code>.
-          Update the variable and redeploy.
+        <div role="status" style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
+          <code>NEXT_PUBLIC_API_URL</code> must be your API origin (e.g. <code>https://…hf.space</code>), not this Vercel URL.
         </div>
       ) : null}
       <div
-        className="app-grid"
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(260px, 320px) 1fr",
           minHeight: "100vh",
-          maxWidth: 1200,
+          maxWidth: 920,
           margin: "0 auto",
-          gap: 0,
-        }}
-      >
-      <aside
-        style={{
-          borderRight: "1px solid var(--border)",
-          background: "var(--surface)",
           display: "flex",
           flexDirection: "column",
-          padding: 16,
         }}
       >
-        <h1 style={{ fontSize: "1.1rem", margin: "0 0 4px", fontWeight: 600 }}>Your todos</h1>
-        <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--muted)" }}>
-          Synced from the MCP server (SQLite), scoped to your account when signed in.
-        </p>
-        <button
-          type="button"
-          onClick={() => void fetchTodos()}
-          style={{
-            marginBottom: 12,
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--surface-hover)",
-            color: "var(--text)",
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          Refresh list
-        </button>
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, overflowY: "auto", flex: 1 }}>
-          {todos.length === 0 ? (
-            <li style={{ color: "var(--muted)", fontSize: 14 }}>No todos yet. Ask the assistant.</li>
-          ) : (
-            todos.map((t) => (
-              <li
-                key={t.id}
-                style={{
-                  padding: "10px 12px",
-                  marginBottom: 8,
-                  borderRadius: "var(--radius)",
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  fontSize: 14,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: t.completed ? "var(--success)" : "var(--muted)",
-                    }}
-                  >
-                    {t.completed ? "Done" : "Open"}
-                  </span>
-                  <span style={{ color: "var(--muted)", fontSize: 11 }}>#{t.id}</span>
-                </div>
-                <div style={{ fontWeight: 500 }}>{t.title}</div>
-                {t.description ? (
-                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{t.description}</div>
-                ) : null}
-              </li>
-            ))
-          )}
-        </ul>
-      </aside>
-
-      <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         <header
           style={{
             padding: "16px 20px",
@@ -389,9 +228,10 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
           }}
         >
           <div>
-            <h2 style={{ margin: 0, fontSize: "1.15rem" }}>Todo assistant</h2>
-            <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--muted)" }}>
-              Natural language is routed through an agent that calls MCP todo tools.
+            <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>Meridian Electronics</h1>
+            <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Customer support</h2>
+            <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)", maxWidth: 560 }}>
+              Hi there! I am Meridian&apos;s customer support assistant. How can I help you today?
             </p>
           </div>
           {showUserButton ? (
@@ -413,8 +253,8 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
         >
           {messages.length === 0 ? (
             <p style={{ color: "var(--muted)" }}>
-              Try: &quot;Add a todo to buy groceries&quot;, &quot;List my incomplete tasks&quot;, or
-              &quot;Mark todo 1 as complete&quot;.
+              Examples: product search, order status, or account verification — the assistant uses Meridian&apos;s order
+              tools.
             </p>
           ) : null}
           {messages.map((m) => (
@@ -456,7 +296,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
                 void sendMessage();
               }
             }}
-            placeholder="Message the assistant…"
+            placeholder="Describe what you need help with…"
             disabled={loading}
             style={{
               flex: 1,
@@ -485,8 +325,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
             Send
           </button>
         </div>
-      </main>
-    </div>
+      </div>
     </>
   );
 }

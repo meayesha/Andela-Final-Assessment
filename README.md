@@ -1,15 +1,14 @@
 ---
-title: Todo MCP Chat
-emoji: 📋
+title: Meridian Support Chat
 colorFrom: blue
 colorTo: indigo
 sdk: docker
 pinned: false
 ---
 
-# Andela Final Assessment — Todo MCP Chatbot
+# Meridian Electronics — Customer Support Chat
 
-MCP (Python) + OpenAI Agents SDK + Next.js chat UI. The LLM is called through **OpenRouter** (OpenAI-compatible Chat Completions). Todos live in SQLite; the agent talks to the MCP server over stdio; the browser streams assistant tokens over SSE.
+FastAPI + **OpenAI Agents SDK** + **Streamable HTTP MCP** + Next.js chat UI. The LLM is called through **OpenRouter** (OpenAI-compatible Chat Completions). The agent uses the remote **Meridian order MCP** for catalog, orders, and customer lookup. Chat **streams** over SSE; **session history** is stored in SQLite (`AGENT_DB_PATH` / defaults under `backend/data/`).
 
 ## Local development
 
@@ -33,7 +32,7 @@ uv run uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
 
 Or from the repo root: **`./scripts/run-backend.sh`** (same command; honors `HOST` / `PORT` env vars).
 
-**Run API + Next together:** from repo root, **`./scripts/dev.sh`** (backend via `uv`, frontend on port **3000** by default; set **`FRONT_PORT`**, **`PORT`**, or **`HOST`** if you need overrides). **Ctrl+C** stops both.
+**Run API + Next together:** from repo root, **`python run_local.py`** or **`./scripts/dev.sh`** (backend via `uv`, frontend on port **3000** by default; set **`FRONT_PORT`**, **`PORT`**, or **`HOST`** if you need overrides). **Ctrl+C** stops both.
 
 **3. Frontend** (second terminal):
 
@@ -43,6 +42,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+For local Next without `NEXT_PUBLIC_API_URL`, the proxy defaults to **`http://127.0.0.1:8000`** (override with **`LOCAL_API_ORIGIN`** if needed).
 
 **4. Single origin (like production):** build the UI into `backend/static`, then only run uvicorn.
 
@@ -56,14 +57,14 @@ Open `http://127.0.0.1:8000` — leave `NEXT_PUBLIC_API_URL` empty so the browse
 
 ## Vercel (frontend)
 
-This app’s **agent and MCP stack run in Python** (FastAPI), not in Vercel’s Node runtime. On Vercel you typically deploy **only `frontend/`**:
+The **agent and MCP client run in Python** (FastAPI), not in Vercel’s Node runtime. On Vercel you typically deploy **only `frontend/`**:
 
 1. New Vercel project → import this repo → set **Root Directory** to `frontend`.
-2. **Build settings:** set **Framework Preset** to **Next.js**. Leave **Output Directory** empty (default). Do **not** set it to `public` or **`out`** unless you really use a static export — if Vercel serves only static files, **`/api/*` route handlers never run** and you will see **404** on todos/history. This repo’s **`frontend/vercel.json`** sets `"framework": "nextjs"` to nudge the correct build. Do **not** set **`STATIC_EXPORT=true`** on Vercel (it is for the Docker/HF image only); `next.config.ts` now ignores it when **`VERCEL=1`** so previews recover, but remove it to avoid confusion.
+2. **Build settings:** set **Framework Preset** to **Next.js**. Leave **Output Directory** empty (default). Do **not** set it to `public` or **`out`** unless you really use a static export — if Vercel serves only static files, **`/api/*` route handlers never run** and you will see **404** on chat/history. This repo’s **`frontend/vercel.json`** sets `"framework": "nextjs"` to nudge the correct build. Do **not** set **`STATIC_EXPORT=true`** on Vercel (it is for the Docker/HF image only); `next.config.ts` ignores it when **`VERCEL=1`** so previews recover, but remove it to avoid confusion.
 3. Point the browser at your Python API in one of two ways (Production **and** Preview):
    - **`NEXT_PUBLIC_API_URL`** — full API origin (e.g. `https://your-space.hf.space`). The client calls that host directly; set **`CORS_ORIGINS`** on the API to allow your `*.vercel.app` origin.
-   - **`API_PROXY_ORIGIN`** (or **`NEXT_PUBLIC_API_URL`** on the server only) — same URL; **`frontend/app/api/*/route.ts`** handlers proxy same-origin **`/api/*`** at **request time** (good for **Preview** when the client bundle has no `NEXT_PUBLIC_*`). Leave **`NEXT_PUBLIC_API_URL`** empty in the client if you rely on this. The Docker image **removes** `app/api` before static export so Hugging Face builds are unchanged. **`next.config.ts`** uses **`trailingSlash: false`** so `/api/todos` is not rewritten to a trailing slash that can **404** on Vercel.
-4. Put **`OPENROUTER_API_KEY`** (and optional **`OPENROUTER_MODEL`**, **`CORS_ORIGINS`**) on the **Python host**, not in Vercel. The app calls OpenRouter’s OpenAI-compatible API with Chat Completions (see `backend/api/openrouter.py`).
+   - **`API_PROXY_ORIGIN`** (or **`NEXT_PUBLIC_API_URL`** on the server only) — same URL; **`frontend/app/api/*/route.ts`** handlers proxy same-origin **`/api/*`** at **request time** (good for **Preview** when the client bundle has no `NEXT_PUBLIC_*`). Leave **`NEXT_PUBLIC_API_URL`** empty in the client if you rely on this. The Docker image **removes** `app/api` before static export so Hugging Face builds are unchanged. **`next.config.ts`** uses **`trailingSlash: false`** so `/api/...` is not rewritten to a trailing slash that can **404** on Vercel.
+4. Put **`OPENROUTER_API_KEY`** (and optional **`OPENROUTER_MODEL`**, **`CORS_ORIGINS`**, **`MCP_SERVER_URL`**) on the **Python host**, not in Vercel. The app calls OpenRouter’s OpenAI-compatible API (see `backend/api/openrouter.py`).
 5. If you use **`NEXT_PUBLIC_API_URL`** (cross-origin from the browser), set **`CORS_ORIGINS`** on the API to your Vercel URL(s), e.g. `https://your-app.vercel.app`. With **`API_PROXY_ORIGIN`** only, the browser talks to Vercel first, so CORS from the browser to HF is not required for `/api/*`.
 
 ### Clerk (sign-in on Vercel)
@@ -96,8 +97,16 @@ Variable reference: **`.env.example`** at the repo root.
 
 | Path | Role |
 |------|------|
-| `backend/todo_mcp/` | FastMCP stdio server + SQLite todo store |
-| `backend/api/main.py` | FastAPI: MCP stdio client, agent streaming, `/api/todos`, history |
-| `frontend/` | Next.js static export, chat + todo sidebar |
+| `backend/api/main.py` | FastAPI: Streamable HTTP MCP client, Meridian agent, streaming, session history |
+| `frontend/` | Next.js chat (Meridian support) |
+| `frontend/docker-hf/` | Static-export variant for Docker / Hugging Face |
 
-See `problem_statement.md` for the full assessment brief.
+See `problem_statement.md` for the assessment brief.
+
+## Tests (backend)
+
+```bash
+cd backend && uv sync --extra dev && uv run pytest
+```
+
+Optional live MCP tests: set **`RUN_MCP_INTEGRATION=1`** (see `backend/tests/test_mcp_customer_pin_integration.py`).
