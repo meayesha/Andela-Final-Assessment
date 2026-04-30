@@ -10,6 +10,8 @@ COPY frontend/ ./
 COPY frontend/docker-hf/layout.tsx ./app/layout.tsx
 COPY frontend/docker-hf/page.tsx ./app/page.tsx
 COPY frontend/docker-hf/ChatShell.tsx ./app/ChatShell.tsx
+# Vercel-only App Route proxy; static export does not support API routes.
+RUN rm -rf ./app/api
 ENV STATIC_EXPORT=true
 RUN npm run build
 

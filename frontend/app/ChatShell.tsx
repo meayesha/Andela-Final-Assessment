@@ -75,7 +75,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   /** Vercel deploy: API lives elsewhere; warn if NEXT_PUBLIC_API_URL missing or wrongly set to this origin. */
-  const [vercelApiIssue, setVercelApiIssue] = useState<"missing" | "self" | null>(null);
+  const [vercelApiIssue, setVercelApiIssue] = useState<"missing" | "self" | "proxy503" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,14 +85,29 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       setVercelApiIssue(null);
       return;
     }
-    if (process.env.NEXT_PUBLIC_BUILD_API_PROXY === "1") {
+    const b = apiBase();
+    if (b === window.location.origin) {
+      setVercelApiIssue("self");
+      return;
+    }
+    if (b) {
       setVercelApiIssue(null);
       return;
     }
-    const b = apiBase();
-    if (!b) setVercelApiIssue("missing");
-    else if (b === window.location.origin) setVercelApiIssue("self");
-    else setVercelApiIssue(null);
+    // No NEXT_PUBLIC_API_URL in bundle — same-origin /api may still work via server proxy + server env.
+    void fetch("/api/health", { method: "GET" })
+      .then(async (r) => {
+        if (r.ok) {
+          setVercelApiIssue(null);
+          return;
+        }
+        if (r.status === 503) {
+          setVercelApiIssue("proxy503");
+          return;
+        }
+        setVercelApiIssue("missing");
+      })
+      .catch(() => setVercelApiIssue("missing"));
   }, []);
 
   const fetchTodos = useCallback(async () => {
@@ -178,6 +193,25 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
 
   return (
     <>
+      {vercelApiIssue === "proxy503" ? (
+        <div
+          role="status"
+          style={{
+            padding: "12px 16px",
+            background: "var(--surface-hover)",
+            borderBottom: "1px solid var(--border)",
+            color: "var(--text)",
+            fontSize: 14,
+            textAlign: "center",
+          }}
+        >
+          This deployment’s server has no upstream API URL. In Vercel → Environment Variables (scope to{" "}
+          <strong>Production and Preview</strong>), set <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> or{" "}
+          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> to your Hugging Face origin (e.g.{" "}
+          <code style={{ fontSize: 13 }}>https://…hf.space</code>), then <strong>Redeploy</strong>. The proxy runs on the
+          server, so Preview works without rebuilding the client bundle for <code style={{ fontSize: 13 }}>NEXT_PUBLIC_*</code>.
+        </div>
+      ) : null}
       {vercelApiIssue === "missing" ? (
         <div
           role="status"
@@ -190,13 +224,10 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
             textAlign: "center",
           }}
         >
-          Chat and todos need the FastAPI backend. If the Network tab shows <code style={{ fontSize: 13 }}>…vercel.app/api/…</code>, this
-          deployment was built without an API base. In Vercel → Environment Variables, scope variables to{" "}
-          <strong>Production and Preview</strong> (not Production only)—branch preview URLs do not inherit Production-only
-          values. Set <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> to your HF origin (e.g.{" "}
-          <code style={{ fontSize: 13 }}>https://…hf.space</code>), or <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> with{" "}
-          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> empty for <code style={{ fontSize: 13 }}>next.config.ts</code> rewrites.
-          Then <strong>redeploy this preview</strong> so the client bundle is rebuilt.
+          Chat and todos need the FastAPI backend. In Vercel → Environment Variables, scope{" "}
+          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> to <strong>Production and Preview</strong>, then redeploy so the
+          client bundle includes your API origin. Or set server-only <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> (same URL) and
+          redeploy — same-origin <code style={{ fontSize: 13 }}>/api/*</code> is proxied without <code style={{ fontSize: 13 }}>NEXT_PUBLIC_*</code>.
         </div>
       ) : null}
       {vercelApiIssue === "self" ? (
