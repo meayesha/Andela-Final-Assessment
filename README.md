@@ -7,6 +7,10 @@ pinned: false
 short_description: AI customer support chat for Meridian Electronics (FastAPI, OpenRouter, remote MCP, streaming UI).
 ---
 
+Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+
+This Space runs from the repo **Dockerfile** (`sdk: docker`). Fields like `app_file` / `sdk_version` apply to **Gradio** or **static** Spaces, not this layout.
+
 # Meridian Support Chat
 
 **Production**
