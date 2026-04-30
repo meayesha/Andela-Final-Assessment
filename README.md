@@ -1,3 +1,12 @@
+---
+title: Todo MCP Chat
+emoji: 📋
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # Andela Final Assessment — Todo MCP Chatbot
 
 MCP (Python) + OpenAI Agents SDK + Next.js chat UI. The LLM is called through **OpenRouter** (OpenAI-compatible Chat Completions). Todos live in SQLite; the agent talks to the MCP server over stdio; the browser streams assistant tokens over SSE.
