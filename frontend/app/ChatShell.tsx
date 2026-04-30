@@ -29,6 +29,28 @@ function apiBase(): string {
   return (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 }
 
+/**
+ * True when NEXT_PUBLIC_API_URL points at huggingface.co (Space card, git, etc.) — not the running API.
+ * The live Space is always on *.hf.space (open the Space → use the URL in the browser address bar).
+ */
+function apiBaseIsInvalidHuggingFaceHubUrl(): boolean {
+  const b = apiBase().toLowerCase();
+  if (!b) return false;
+  if (b.includes(".hf.space")) return false;
+  if (b.includes("huggingface.co")) return true;
+  if (b.includes(".git")) return true;
+  return false;
+}
+
+/** Same-origin API: absolute URL; never cross-origin to huggingface.co (CORS will fail). */
+function apiRequestUrl(path: string): string {
+  const p = (path || "").replace(/\/+$/, "") || path;
+  const b = apiBase();
+  if (b && !apiBaseIsInvalidHuggingFaceHubUrl()) return `${b}${p}`;
+  if (typeof window !== "undefined") return new URL(p, window.location.origin).toString();
+  return p;
+}
+
 async function parseSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onToken: (t: string) => void,
@@ -75,11 +97,17 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   /** Vercel deploy: API lives elsewhere; warn if NEXT_PUBLIC_API_URL missing or wrongly set to this origin. */
-  const [vercelApiIssue, setVercelApiIssue] = useState<"missing" | "self" | "proxy503" | null>(null);
+  const [vercelApiIssue, setVercelApiIssue] = useState<
+    "missing" | "self" | "proxy503" | "hfGitUrl" | null
+  >(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (apiBaseIsInvalidHuggingFaceHubUrl()) {
+      setVercelApiIssue("hfGitUrl");
+      return;
+    }
     const host = window.location.hostname;
     if (!host.endsWith("vercel.app")) {
       setVercelApiIssue(null);
@@ -95,7 +123,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       return;
     }
     // No NEXT_PUBLIC_API_URL in bundle — same-origin /api may still work via server proxy + server env.
-    void fetch("/api/health", { method: "GET" })
+    void fetch(apiRequestUrl("/api/health"), { method: "GET" })
       .then(async (r) => {
         if (r.ok) {
           setVercelApiIssue(null);
@@ -111,9 +139,8 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   }, []);
 
   const fetchTodos = useCallback(async () => {
-    const base = apiBase();
     const auth = await getAuthHeaders();
-    const res = await fetch(`${base}/api/todos`, { headers: { ...auth } });
+    const res = await fetch(apiRequestUrl("/api/todos"), { headers: { ...auth } });
     if (!res.ok) return;
     setTodos(await res.json());
   }, [getAuthHeaders]);
@@ -121,12 +148,14 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   useEffect(() => {
     if (!sessionId) return;
     void fetchTodos();
-    const base = apiBase();
     void (async () => {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${base}/api/session/${encodeURIComponent(sessionId)}/history`, {
-        headers: { ...auth },
-      });
+      const res = await fetch(
+        apiRequestUrl(`/api/session/${encodeURIComponent(sessionId)}/history`),
+        {
+          headers: { ...auth },
+        },
+      );
       if (!res.ok) return;
       const data = (await res.json()) as { messages: { role: string; content: string }[] };
       const mapped: ChatMessage[] = (data.messages || []).map((m, i) => ({
@@ -151,20 +180,19 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
     setMessages((prev) => [...prev, userMsg, { id: asstId, role: "assistant", content: "" }]);
     setLoading(true);
 
-    const base = apiBase();
     const auth = await getAuthHeaders();
-    const res = await fetch(`${base}/api/chat/stream`, {
+    const res = await fetch(apiRequestUrl("/api/chat/stream"), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify({ message: text, session_id: sessionId }),
     });
 
     if (!res.ok || !res.body) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === asstId ? { ...m, content: `Request failed (${res.status}).` } : m,
-        ),
-      );
+      const hint =
+        res.status === 404
+          ? "404: /api/chat/stream is not running on this host. On Vercel use Root Directory = frontend, leave Output Directory empty, remove STATIC_EXPORT from env, set API_PROXY_ORIGIN (or NEXT_PUBLIC_API_URL), redeploy."
+          : `Request failed (${res.status}).`;
+      setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: hint } : m)));
       setLoading(false);
       return;
     }
@@ -193,6 +221,28 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
 
   return (
     <>
+      {vercelApiIssue === "hfGitUrl" ? (
+        <div
+          role="alert"
+          style={{
+            padding: "12px 16px",
+            background: "var(--surface-hover)",
+            borderBottom: "1px solid var(--border)",
+            color: "var(--text)",
+            fontSize: 14,
+            textAlign: "center",
+          }}
+        >
+          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> must not be{" "}
+          <code style={{ fontSize: 13 }}>huggingface.co/spaces/…</code> — that is the website, not your API (browser CORS
+          will block it). Open the Space → copy the app URL that shows <code style={{ fontSize: 13 }}>*.hf.space</code> in
+          the address bar and set that in Vercel, or set <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> to that{" "}
+          <code style={{ fontSize: 13 }}>https://…hf.space</code> and <strong>remove</strong> the wrong{" "}
+          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> so this site proxies <code style={{ fontSize: 13 }}>/api/*</code>.
+          This build also ignores bad <code style={{ fontSize: 13 }}>huggingface.co</code> bases and uses same-origin{" "}
+          <code style={{ fontSize: 13 }}>/api/*</code> until you fix env + redeploy.
+        </div>
+      ) : null}
       {vercelApiIssue === "proxy503" ? (
         <div
           role="status"
