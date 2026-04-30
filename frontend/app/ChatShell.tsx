@@ -152,7 +152,7 @@ export function ChatShell({ sessionId, threadId, getAuthHeaders, showUserButton 
         >
           <div>
             <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>Meridian Electronics</h1>
-            <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Hi there! I am Meridian's customer support assistant. How can I help you today?</h2>
+            <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Hi there! I am Meridian's customer support assistant.</h2>
           </div>
           {showUserButton ? (
             <div style={{ flexShrink: 0 }}>
