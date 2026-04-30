@@ -15,6 +15,8 @@ RUN npm run build
 
 FROM python:3.12-slim
 WORKDIR /app
+# docker-hf UI does not send Clerk; JWKS may still be set for cross-origin Vercel. Allow anonymous /api without Bearer.
+ENV CLERK_AUTH_OPTIONAL=1
 ENV PYTHONPATH=/app
 ENV DATA_DIR=/data
 RUN mkdir -p /data

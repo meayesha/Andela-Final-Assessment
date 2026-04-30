@@ -17,6 +17,41 @@ def clerk_auth_enabled() -> bool:
     return bool((os.environ.get("CLERK_JWKS_URL") or "").strip())
 
 
+def clerk_auth_strict() -> bool:
+    """When True with CLERK_JWKS_URL set, always require Bearer (even on Hugging Face Spaces)."""
+    v = (os.environ.get("CLERK_AUTH_STRICT") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def huggingface_space_runtime() -> bool:
+    """True when Hugging Face Spaces injects its runtime env (Docker Space). Not all builds expose SPACE_ID."""
+    for key in (
+        "SPACE_ID",
+        "SPACE_REPO_NAME",
+        "SPACE_AUTHOR_NAME",
+        "SPACE_HOST",
+        "SPACE_TITLE",
+    ):
+        if (os.environ.get(key) or "").strip():
+            return True
+    return False
+
+
+def clerk_auth_optional() -> bool:
+    """When True with CLERK_JWKS_URL set, missing Bearer is treated as anonymous (HF same-origin UI)."""
+    if clerk_auth_strict():
+        return False
+    # On HF, bundled docker-hf UI never sends Clerk; Vercel clients can still send Bearer (verified when present).
+    if huggingface_space_runtime():
+        return True
+    v = (os.environ.get("CLERK_AUTH_OPTIONAL") or "").strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    return False
+
+
 @lru_cache(maxsize=1)
 def _jwks_client() -> PyJWKClient:
     url = (os.environ.get("CLERK_JWKS_URL") or "").strip()
@@ -52,13 +87,21 @@ def verify_clerk_bearer_token(token: str) -> str:
 async def resolve_clerk_user_id(
     authorization: str | None = Header(None, alias="Authorization"),
 ) -> str | None:
-    """If Clerk is configured, require a valid Bearer token and return user id; else None."""
+    """If Clerk is configured, validate Bearer when present; optional mode allows no Bearer (anonymous)."""
     if not clerk_auth_enabled():
         return None
-    if not authorization or not authorization.lower().startswith("bearer "):
+    auth_lower = (authorization or "").lower()
+    if not authorization or not auth_lower.startswith("bearer "):
+        if clerk_auth_optional():
+            return None
         raise HTTPException(
             status_code=401,
             detail="Authorization: Bearer <clerk_session_jwt> required",
         )
     raw = authorization[7:].strip()
+    # Clerk can send "Bearer " with no token during transitions; treat like missing when anonymous is allowed.
+    if not raw and clerk_auth_optional():
+        return None
+    if not raw:
+        raise HTTPException(status_code=401, detail="Authorization bearer token required")
     return verify_clerk_bearer_token(raw)

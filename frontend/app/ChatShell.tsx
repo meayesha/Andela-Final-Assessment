@@ -74,7 +74,26 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   const [todos, setTodos] = useState<Todo[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  /** Vercel deploy: API lives elsewhere; warn if NEXT_PUBLIC_API_URL missing or wrongly set to this origin. */
+  const [vercelApiIssue, setVercelApiIssue] = useState<"missing" | "self" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const host = window.location.hostname;
+    if (!host.endsWith("vercel.app")) {
+      setVercelApiIssue(null);
+      return;
+    }
+    if (process.env.NEXT_PUBLIC_BUILD_API_PROXY === "1") {
+      setVercelApiIssue(null);
+      return;
+    }
+    const b = apiBase();
+    if (!b) setVercelApiIssue("missing");
+    else if (b === window.location.origin) setVercelApiIssue("self");
+    else setVercelApiIssue(null);
+  }, []);
 
   const fetchTodos = useCallback(async () => {
     const base = apiBase();
@@ -158,17 +177,57 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
   }
 
   return (
-    <div
-      className="app-grid"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(260px, 320px) 1fr",
-        minHeight: "100vh",
-        maxWidth: 1200,
-        margin: "0 auto",
-        gap: 0,
-      }}
-    >
+    <>
+      {vercelApiIssue === "missing" ? (
+        <div
+          role="status"
+          style={{
+            padding: "12px 16px",
+            background: "var(--surface-hover)",
+            borderBottom: "1px solid var(--border)",
+            color: "var(--text)",
+            fontSize: 14,
+            textAlign: "center",
+          }}
+        >
+          Chat and todos need the FastAPI backend. If the Network tab shows <code style={{ fontSize: 13 }}>…vercel.app/api/…</code>, this
+          deployment was built without an API base. In Vercel → Environment Variables, scope variables to{" "}
+          <strong>Production and Preview</strong> (not Production only)—branch preview URLs do not inherit Production-only
+          values. Set <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> to your HF origin (e.g.{" "}
+          <code style={{ fontSize: 13 }}>https://…hf.space</code>), or <code style={{ fontSize: 13 }}>API_PROXY_ORIGIN</code> with{" "}
+          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> empty for <code style={{ fontSize: 13 }}>next.config.ts</code> rewrites.
+          Then <strong>redeploy this preview</strong> so the client bundle is rebuilt.
+        </div>
+      ) : null}
+      {vercelApiIssue === "self" ? (
+        <div
+          role="status"
+          style={{
+            padding: "12px 16px",
+            background: "var(--surface-hover)",
+            borderBottom: "1px solid var(--border)",
+            color: "var(--text)",
+            fontSize: 14,
+            textAlign: "center",
+          }}
+        >
+          <code style={{ fontSize: 13 }}>NEXT_PUBLIC_API_URL</code> is set to this Vercel deployment. It must be the
+          origin where FastAPI runs (your Hugging Face Space <code style={{ fontSize: 13 }}>https://…hf.space</code>),
+          not <code style={{ fontSize: 13 }}>{typeof window !== "undefined" ? window.location.origin : ""}</code>.
+          Update the variable and redeploy.
+        </div>
+      ) : null}
+      <div
+        className="app-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(260px, 320px) 1fr",
+          minHeight: "100vh",
+          maxWidth: 1200,
+          margin: "0 auto",
+          gap: 0,
+        }}
+      >
       <aside
         style={{
           borderRight: "1px solid var(--border)",
@@ -347,5 +406,6 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
         </div>
       </main>
     </div>
+    </>
   );
 }

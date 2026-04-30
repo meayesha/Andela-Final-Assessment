@@ -27,7 +27,13 @@ from agents import Agent, Runner
 from agents.mcp import MCPServerStdio
 from agents.memory import SQLiteSession
 
-from api.clerk_auth import clerk_auth_enabled, resolve_clerk_user_id
+from api.clerk_auth import (
+    clerk_auth_enabled,
+    clerk_auth_optional,
+    clerk_auth_strict,
+    huggingface_space_runtime,
+    resolve_clerk_user_id,
+)
 from api.history_util import session_items_to_chat
 from api.openrouter import build_openrouter_run_config, openrouter_model_name
 from todo_mcp.store import list_todos_for_api
@@ -133,7 +139,14 @@ async def lifespan(app: FastAPI):
     if not (os.environ.get("OPENROUTER_API_KEY") or "").strip():
         logger.warning("OPENROUTER_API_KEY is not set; chat will fail until it is configured.")
     if clerk_auth_enabled():
-        logger.info("Clerk JWT verification enabled (CLERK_JWKS_URL).")
+        if clerk_auth_optional():
+            logger.info(
+                "Clerk JWT enabled; missing Bearer uses anonymous session "
+                "(default on Hugging Face when SPACE_ID is set, or set CLERK_AUTH_OPTIONAL=1). "
+                "Bearer is still verified when sent.",
+            )
+        else:
+            logger.info("Clerk JWT verification enabled (CLERK_JWKS_URL); Bearer required on API routes.")
     yield
 
 
@@ -178,6 +191,7 @@ app.add_middleware(
 
 
 @app.post("/api/chat/stream")
+@app.post("/api/chat/stream/")
 async def chat_stream(
     body: ChatStreamBody,
     clerk_user_id: str | None = Depends(resolve_clerk_user_id),
@@ -194,11 +208,13 @@ async def chat_stream(
 
 
 @app.get("/api/todos")
+@app.get("/api/todos/")
 async def get_todos(clerk_user_id: str | None = Depends(resolve_clerk_user_id)):
     return list_todos_for_api(clerk_user_id or "")
 
 
 @app.get("/api/session/{session_id}/history")
+@app.get("/api/session/{session_id}/history/")
 async def get_history(
     session_id: str,
     clerk_user_id: str | None = Depends(resolve_clerk_user_id),
@@ -232,6 +248,10 @@ async def health():
         "llm": "openrouter",
         "model": openrouter_model_name(),
         "clerk_auth": clerk_auth_enabled(),
+        "clerk_auth_optional": clerk_auth_optional(),
+        "clerk_auth_strict": clerk_auth_strict(),
+        "huggingface_space_runtime": huggingface_space_runtime(),
+        "space_id_set": bool((os.environ.get("SPACE_ID") or "").strip()),
     }
 
 

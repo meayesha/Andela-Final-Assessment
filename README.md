@@ -60,9 +60,11 @@ This app’s **agent and MCP stack run in Python** (FastAPI), not in Vercel’s 
 
 1. New Vercel project → import this repo → set **Root Directory** to `frontend`.
 2. **Build settings:** set **Framework Preset** to **Next.js**. Leave **Output Directory** empty (default). Do **not** set it to `public` — that error means Vercel is treating the app like a static folder of HTML; Next.js outputs to `.next` (or `out/` only if you set `STATIC_EXPORT=true` on Vercel, in which case use **`out`**, not `public`).
-3. In Vercel → **Environment Variables**, set **`NEXT_PUBLIC_API_URL`** to your deployed Python API base URL (e.g. `https://your-api.onrender.com`) for Production and Preview.
+3. Point the browser at your Python API in one of two ways (Production **and** Preview):
+   - **`NEXT_PUBLIC_API_URL`** — full API origin (e.g. `https://your-space.hf.space`). The client calls that host directly; set **`CORS_ORIGINS`** on the API to allow your `*.vercel.app` origin.
+   - **`API_PROXY_ORIGIN`** — same URL, but used only at **`next build`** in **`frontend/next.config.ts`** rewrites: the app uses same-origin **`/api/*`**, and Vercel proxies to Hugging Face (often simpler CORS). Leave **`NEXT_PUBLIC_API_URL`** empty when using this. You **cannot** put the HF URL in **`vercel.json`** with per-user secrets; use dashboard env vars instead.
 4. Put **`OPENROUTER_API_KEY`** (and optional **`OPENROUTER_MODEL`**, **`CORS_ORIGINS`**) on the **Python host**, not in Vercel. The app calls OpenRouter’s OpenAI-compatible API with Chat Completions (see `backend/api/openrouter.py`).
-5. Set **`CORS_ORIGINS`** on the API to your Vercel URL(s), e.g. `https://your-app.vercel.app`, so the browser can call the API.
+5. If you use **`NEXT_PUBLIC_API_URL`** (cross-origin from the browser), set **`CORS_ORIGINS`** on the API to your Vercel URL(s), e.g. `https://your-app.vercel.app`. With **`API_PROXY_ORIGIN`** only, the browser talks to Vercel first, so CORS from the browser to HF is not required for `/api/*`.
 
 ### Clerk (sign-in on Vercel)
 
@@ -75,16 +77,18 @@ On the **Python API host**, add:
 - **`CLERK_JWKS_URL`** (Clerk Dashboard → JWT templates → Session token → JWKS URL) so the API can verify `Authorization: Bearer` from the browser.
 - **`CLERK_ISSUER`** (optional, same screen).
 
-When **`CLERK_JWKS_URL`** is set, protected API routes require a Clerk session JWT; todos and chat history are scoped by Clerk user id. When unset, the API stays open for anonymous sessions (local/demo).
+When **`CLERK_JWKS_URL`** is set, the API verifies `Authorization: Bearer` when present. On **Hugging Face Spaces** (detected via `SPACE_ID`, `SPACE_REPO_NAME`, `SPACE_HOST`, etc.), missing Bearer falls back to **anonymous** `session_id` (docker-hf has no Clerk) unless you set **`CLERK_AUTH_STRICT=1`**. The **Dockerfile** also sets **`CLERK_AUTH_OPTIONAL=1`** so anonymous works even if a given Space omits HF env vars. Outside HF, missing Bearer returns **401** unless you set **`CLERK_AUTH_OPTIONAL=1`**.
 
-The **Docker / Hugging Face** image ships **`frontend/docker-hf/`** (no Clerk SDK) because Clerk is incompatible with `output: 'export'`. Use **Vercel** for the authenticated UI.
+When **`CLERK_JWKS_URL`** is unset, the API stays open for anonymous sessions (local/demo).
+
+The **Docker / Hugging Face** image ships **`frontend/docker-hf/`** (no Clerk SDK) because Clerk is incompatible with `output: 'export'`. Use **Vercel** for the authenticated UI, or enable **`CLERK_AUTH_OPTIONAL`** on the Space if you keep JWKS for cross-origin Vercel calls.
 
 Variable reference: **`.env.example`** at the repo root.
 
 ## Hugging Face Space (Docker)
 
 1. Create a **Docker** Space and push this repo (root `Dockerfile` is used).
-2. In **Space variables**, add `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`, e.g. `openai/gpt-4o-mini`).
+2. In **Space variables**, add `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`, e.g. `openai/gpt-4o-mini`). If you copied **`CLERK_JWKS_URL`** from Vercel, either **pull the latest API code** (anonymous is default when HF sets `SPACE_ID`) or remove Clerk URL vars / set **`CLERK_AUTH_OPTIONAL=1`**. Otherwise an older image still returns **401** without Bearer.
 3. The platform sets `PORT`; the image runs uvicorn on that port and serves the Next export from `/` plus APIs under `/api`.
 4. The Docker build uses **`frontend/docker-hf/`** for the static UI (no Clerk). For Clerk + static export limitations, deploy the **frontend to Vercel** and the API elsewhere if you need sign-in on the same domain as static files.
 
