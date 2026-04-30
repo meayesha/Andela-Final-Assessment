@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run backend (uv + uvicorn) and frontend (npm dev) together. Ctrl+C stops both.
+# To be able to run backend (uv + uvicorn) and frontend (npm dev) together.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
