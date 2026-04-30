@@ -1,12 +1,16 @@
 "use client";
 
 import { RedirectToSignIn, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
-import { ChatShell, getOrCreateAnonymousSessionId } from "./ChatShell";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChatShell } from "./ChatShell";
 
 function ChatClerk() {
   const { isLoaded, userId, getToken } = useAuth();
   const [sessionId, setSessionId] = useState("");
+  const threadIdRef = useRef<string | null>(null);
+  if (threadIdRef.current === null) {
+    threadIdRef.current = crypto.randomUUID();
+  }
 
   useEffect(() => {
     if (isLoaded && userId) setSessionId(userId);
@@ -26,13 +30,20 @@ function ChatClerk() {
     );
   }
 
-  return <ChatShell sessionId={sessionId} getAuthHeaders={getAuthHeaders} showUserButton />;
+  return (
+    <ChatShell
+      sessionId={sessionId}
+      threadId={threadIdRef.current!}
+      getAuthHeaders={getAuthHeaders}
+      showUserButton
+    />
+  );
 }
 
 function ChatAnon() {
   const [sessionId, setSessionId] = useState("");
   useEffect(() => {
-    setSessionId(getOrCreateAnonymousSessionId());
+    setSessionId(crypto.randomUUID());
   }, []);
   const getAuthHeaders = useCallback(async () => ({}), []);
 

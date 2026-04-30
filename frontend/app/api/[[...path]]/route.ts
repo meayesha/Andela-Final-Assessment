@@ -8,6 +8,7 @@ import { proxyToUpstream } from "../../../lib/upstream-proxy";
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** History + chat stream + health — single proxy avoids duplicate `/api/*` handlers vs optional catch-all. */
 export const maxDuration = 120;
 
 export async function OPTIONS() {

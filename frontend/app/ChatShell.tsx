@@ -6,18 +6,6 @@ import { clientApiRequestUrl } from "../lib/api-request-url";
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
 
-const SESSION_KEY = "meridian_support_session_id";
-
-export function getOrCreateAnonymousSessionId(): string {
-  if (typeof window === "undefined") return "";
-  let id = sessionStorage.getItem(SESSION_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    sessionStorage.setItem(SESSION_KEY, id);
-  }
-  return id;
-}
-
 async function parseSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onToken: (t: string) => void,
@@ -54,11 +42,13 @@ async function parseSSEStream(
 
 export type ChatShellProps = {
   sessionId: string;
+  /** With Clerk, isolates agent memory per page load (must match backend `thread_id`). */
+  threadId?: string;
   getAuthHeaders: () => Promise<Record<string, string>>;
   showUserButton?: boolean;
 };
 
-export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShellProps) {
+export function ChatShell({ sessionId, threadId, getAuthHeaders, showUserButton }: ChatShellProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,8 +58,12 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
     if (!sessionId) return;
     void (async () => {
       const auth = await getAuthHeaders();
+      const q =
+        threadId != null && threadId !== ""
+          ? `?thread_id=${encodeURIComponent(threadId)}`
+          : "";
       const res = await fetch(
-        clientApiRequestUrl(`/api/session/${encodeURIComponent(sessionId)}/history`),
+        clientApiRequestUrl(`/api/session/${encodeURIComponent(sessionId)}/history${q}`),
         { headers: { ...auth } },
       );
       if (!res.ok) return;
@@ -81,7 +75,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
       }));
       setMessages(mapped);
     })();
-  }, [sessionId, getAuthHeaders]);
+  }, [sessionId, threadId, getAuthHeaders]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -97,10 +91,14 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
     setLoading(true);
 
     const auth = await getAuthHeaders();
+    const payload =
+      threadId != null && threadId !== ""
+        ? { message: text, session_id: sessionId, thread_id: threadId }
+        : { message: text, session_id: sessionId };
     const res = await fetch(clientApiRequestUrl("/api/chat/stream"), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth },
-      body: JSON.stringify({ message: text, session_id: sessionId }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok || !res.body) {

@@ -17,11 +17,11 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(REPO_ROOT / ".env")
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai.types.responses import ResponseTextDeltaEvent
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from agents import Agent, Runner
 from agents.mcp import MCPServerStreamableHttp
@@ -85,6 +85,38 @@ Scope (customer-facing wording):
 class ChatStreamBody(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     session_id: str = Field(..., min_length=8, max_length=128)
+    thread_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="With Clerk, scopes SQLite to this browser visit (new id per page load).",
+    )
+
+    @field_validator("thread_id", mode="before")
+    @classmethod
+    def normalize_thread_id(cls, v: object) -> str | None:
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str):
+            raise ValueError("thread_id must be a string")
+        s = v.strip()
+        return s or None
+
+    @field_validator("thread_id")
+    @classmethod
+    def thread_id_length(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if len(v) < 8 or len(v) > 128:
+            raise ValueError("thread_id must be 8–128 characters when set")
+        return v
+
+
+def _sqlite_session_key(session_id: str, clerk_user_id: str | None, thread_id: str | None) -> str:
+    if clerk_user_id is not None:
+        if thread_id:
+            return f"{clerk_user_id}:{thread_id}"
+        return clerk_user_id
+    return session_id
 
 
 def _sse(data: dict) -> str:
@@ -103,7 +135,7 @@ def _mcp_url_host() -> str:
 
 
 async def _chat_event_stream(body: ChatStreamBody, clerk_user_id: str | None) -> AsyncIterator[str]:
-    effective_session = clerk_user_id if clerk_user_id is not None else body.session_id
+    effective_session = _sqlite_session_key(body.session_id, clerk_user_id, body.thread_id)
     mcp_url = _mcp_server_url()
 
     mcp = MCPServerStreamableHttp(
@@ -180,12 +212,14 @@ def _cors_allow_origins() -> list[str]:
 def _cors_allow_origin_regex() -> str | None:
     if (os.environ.get("CORS_ORIGINS") or "").strip():
         return None
+    # Local dev hosts + Vercel previews/production when env is not set (cross-origin NEXT_PUBLIC_API_URL).
     return (
         r"^https?://("
         r"localhost|127\.0\.0\.1|"
         r"192\.168\.\d{1,3}\.\d{1,3}|"
         r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
         r"):\d+$"
+        r"|^https://[^/?#]+\.vercel\.app$"
     )
 
 
@@ -205,6 +239,8 @@ async def chat_stream(
     body: ChatStreamBody,
     clerk_user_id: str | None = Depends(resolve_clerk_user_id),
 ):
+    if clerk_user_id is not None and body.session_id != clerk_user_id:
+        raise HTTPException(403, "session_id must match the signed-in user")
     return StreamingResponse(
         _chat_event_stream(body, clerk_user_id),
         media_type="text/event-stream",
@@ -220,13 +256,19 @@ async def chat_stream(
 @app.get("/api/session/{session_id}/history/")
 async def get_history(
     session_id: str,
+    thread_id: str | None = Query(default=None),
     clerk_user_id: str | None = Depends(resolve_clerk_user_id),
 ):
     if len(session_id) < 8 or len(session_id) > 128:
         raise HTTPException(400, "invalid session_id")
     if clerk_user_id is not None and session_id != clerk_user_id:
         raise HTTPException(403, "session_id must match the signed-in user")
-    effective = clerk_user_id if clerk_user_id is not None else session_id
+    tid: str | None = None
+    if thread_id is not None and thread_id.strip():
+        tid = thread_id.strip()
+        if len(tid) < 8 or len(tid) > 128:
+            raise HTTPException(400, "invalid thread_id")
+    effective = _sqlite_session_key(session_id, clerk_user_id, tid)
     session = SQLiteSession(effective, db_path=AGENT_DB_PATH)
     items = await session.get_items()
     if not items:

@@ -6,4 +6,5 @@
 **/*.pyc
 **/data/*.db
 **/.env
+**/.DS_Store
 backend/static

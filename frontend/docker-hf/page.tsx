@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChatShell, getOrCreateAnonymousSessionId } from "./ChatShell";
+import { ChatShell } from "./ChatShell";
 
 export default function HomePage() {
   const [sessionId, setSessionId] = useState("");
   useEffect(() => {
-    setSessionId(getOrCreateAnonymousSessionId());
+    setSessionId(crypto.randomUUID());
   }, []);
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => ({}), []);
 
