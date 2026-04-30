@@ -1,14 +1,8 @@
----
-title: Meridian Support Chat
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-
 # Meridian Support Chat
 
-**Production:** _Add your deployed UI URL (e.g. Vercel) here after release._
+**Production:** 
+**Vercel:**  https://andela-final-assess-git-8ddd4b-parveenayesha1109-1528s-projects.vercel.app/
+**HuggingFace:**  https://huggingface.co/spaces/meayesha24/Andela-Final-Assessment
 
 **Meridian Support Chat** is a prototype AI assistant for **Meridian Electronics** customer support. It answers questions about products, availability, orders, and verified customers by calling a **remote order MCP** (Streamable HTTP). The model runs through **OpenRouter**; the UI streams tokens over **SSE**; **session memory** lives in **SQLite** on the Python host.
 
