@@ -149,7 +149,7 @@ export function ChatShell({ sessionId, getAuthHeaders }: ChatShellProps) {
         <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>Meridian Electronics</h1>
         <h2 style={{ margin: "6px 0 0", fontSize: "1rem", fontWeight: 500 }}>Customer support</h2>
         <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)", maxWidth: 560 }}>
-          Product search, orders, and account help via Meridian&apos;s order tools.
+          Product search, orders, and account help.
         </p>
       </header>
 

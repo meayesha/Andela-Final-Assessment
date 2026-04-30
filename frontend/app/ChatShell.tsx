@@ -253,8 +253,7 @@ export function ChatShell({ sessionId, getAuthHeaders, showUserButton }: ChatShe
         >
           {messages.length === 0 ? (
             <p style={{ color: "var(--muted)" }}>
-              Examples: product search, order status, or account verification — the assistant uses Meridian&apos;s order
-              tools.
+              Examples: product search, order status, or account verification.
             </p>
           ) : null}
           {messages.map((m) => (
